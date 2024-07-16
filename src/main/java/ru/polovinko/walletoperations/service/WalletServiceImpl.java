@@ -24,7 +24,7 @@ public class WalletServiceImpl implements WalletService {
   @Override
   @Transactional
   public void processTransaction(UUID walletId, OperationType operationType, BigDecimal amount) {
-    Wallet wallet = walletRepository.findById(walletId)
+    Wallet wallet = walletRepository.findByIdForUpdate(walletId)
       .orElseThrow(() -> new RuntimeException("Кошелек не найден!"));
     Operation operation = OperationFactory.getOperation(operationType);
     BigDecimal newBalance = operation.apply(wallet.getBalance(), amount);

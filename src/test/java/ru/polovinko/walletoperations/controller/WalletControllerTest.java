@@ -1,6 +1,5 @@
 package ru.polovinko.walletoperations.controller;
 
-import org.apache.coyote.Response;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +22,13 @@ import ru.polovinko.walletoperations.entity.Wallet;
 import ru.polovinko.walletoperations.repository.WalletRepository;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -114,5 +120,31 @@ public class WalletControllerTest {
     String expectedMessage = "Недостаточно средств";
     String actualMessage = exception.getMessage();
     assertTrue(actualMessage.contains(expectedMessage));
+  }
+
+  @Test
+  void testConcurrentTransactions() throws InterruptedException {
+    ResponseEntity<Wallet> createResponse = restTemplate.postForEntity(baseUrl + "/create", null, Wallet.class);
+    assertEquals(HttpStatus.OK, createResponse.getStatusCode());
+    assertNotNull(createResponse.getBody());
+    UUID walletId = createResponse.getBody().getId();
+    int threadCount = 10;
+    int transactionCount = 1000;
+    ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+    List<Callable<Void>> tasks = new ArrayList<>();
+    for (int i = 0; i < transactionCount; i++) {
+      tasks.add(() -> {
+        TransactionDTO transactionDTO = new TransactionDTO(walletId, OperationType.DEPOSIT, BigDecimal.ONE);
+        restTemplate.postForEntity(baseUrl, transactionDTO, String.class);
+        return null;
+      });
+    }
+    executor.invokeAll(tasks);
+    executor.shutdown();
+    executor.awaitTermination(1, TimeUnit.MINUTES);
+    ResponseEntity<BigDecimal> balanceResponse = restTemplate.getForEntity(baseUrl + "/" + walletId, BigDecimal.class);
+    assertEquals(HttpStatus.OK, balanceResponse.getStatusCode());
+    assertNotNull(balanceResponse.getBody());
+    assertEquals(0, BigDecimal.valueOf(transactionCount).compareTo(balanceResponse.getBody()));
   }
 }
